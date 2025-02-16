@@ -1,69 +1,135 @@
 import requests
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
+import numpy as np
 
-# دریافت اطلاعات قیمت از API کوین‌گکو برای ۵۰ ارز برتر
-def fetch_top_crypto_prices():
-    url = "https://api.coingecko.com/api/v3/coins/markets"
+# دریافت داده‌های تاریخی قیمت برای تحلیل
+def fetch_historical_data(coin_id, days=30):
+    url = f"https://api.coingecko.com/api/v3/coins/{coin_id}/market_chart"
     params = {
         "vs_currency": "usd",
-        "order": "market_cap_desc",
-        "per_page": 50,
-        "page": 1,
-        "sparkline": False,
+        "days": days,
+        "interval": "daily"
     }
     response = requests.get(url, params=params)
     if response.status_code == 200:
-        return response.json()
-    else:
-        return None
+        return response.json()['prices']
+    return None
 
-# محاسبه سبد سهام بر اساس وزن‌دهی ارزش بازار
-def calculate_portfolio(data):
-    if not data:
-        return None
+# محاسبه اندیکاتورهای تکنیکال
+def calculate_technical_indicators(prices):
+    closing_prices = [price[1] for price in prices]
+    
+    # محاسبه SMA 20 و SMA 50
+    sma20 = np.mean(closing_prices[-20:]) if len(closing_prices) >= 20 else 0
+    sma50 = np.mean(closing_prices[-50:]) if len(closing_prices) >= 50 else 0
+    
+    # محاسبه RSI
+    deltas = np.diff(closing_prices)
+    gains = np.where(deltas > 0, deltas, 0)
+    losses = np.where(deltas < 0, -deltas, 0)
+    
+    avg_gain = np.mean(gains[-14:]) if len(gains) >=14 else 0
+    avg_loss = np.mean(losses[-14:]) if len(losses) >=14 else 0
+    
+    rs = avg_gain / avg_loss if avg_loss != 0 else 0
+    rsi = 100 - (100 / (1 + rs)) if avg_loss != 0 else 50
+    
+    # محاسبه MACD
+    ema12 = np.mean(closing_prices[-12:])
+    ema26 = np.mean(closing_prices[-26:])
+    macd = ema12 - ema26
+    
+    return {
+        'sma20': sma20,
+        'sma50': sma50,
+        'rsi': rsi,
+        'macd': macd,
+        'current_price': closing_prices[-1]
+    }
 
-    # محاسبه کل ارزش بازار
-    total_market_cap = sum(coin["market_cap"] for coin in data)
+# محاسبه امتیاز ترکیبی
+def calculate_composite_score(coin_data):
+    score = 0
+    
+    # 1. روند کوتاه‌مدت (SMA)
+    if coin_data['sma20'] > coin_data['sma50']:
+        score += 25
+    
+    # 2. شرایط RSI
+    if 30 < coin_data['rsi'] < 70:
+        score += 20
+    elif coin_data['rsi'] < 30:
+        score += 30  # شرایط اشباع فروش
+    
+    # 3. قدرت MACD
+    if coin_data['macd'] > 0:
+        score += 15
+    
+    # 4. حجم معاملات
+    if coin_data['total_volume'] > 100000000:
+        score += 20
+    
+    # 5. قدرت بازار
+    if coin_data['market_cap'] > 1000000000:
+        score += 10
+    
+    return score
 
-    # محاسبه وزن هر ارز در سبد (بر اساس ارزش بازار)
-    for coin in data:
-        coin["weight"] = (coin["market_cap"] / total_market_cap) * 100
+# دریافت و تحلیل 50 ارز برتر
+def analyze_top_coins():
+    base_data = requests.get(
+        "https://api.coingecko.com/api/v3/coins/markets",
+        params={"vs_currency": "usd", "per_page": 50, "order": "market_cap_desc"}
+    ).json()
+    
+    portfolio = []
+    
+    for coin in base_data:
+        try:
+            historical_data = fetch_historical_data(coin['id'])
+            if not historical_data:
+                continue
+                
+            indicators = calculate_technical_indicators(historical_data)
+            score = calculate_composite_score({
+                **indicators,
+                "total_volume": coin['total_volume'],
+                "market_cap": coin['market_cap']
+            })
+            
+            portfolio.append({
+                "name": coin['name'],
+                "symbol": coin['symbol'],
+                "score": score,
+                "price": indicators['current_price'],
+                "rsi": indicators['rsi'],
+                "macd": indicators['macd']
+            })
+            
+        except Exception as e:
+            print(f"Error analyzing {coin['name']}: {str(e)}")
+    
+    return sorted(portfolio, key=lambda x: x['score'], reverse=True)[:10]
 
-    # انتخاب ۱۰ ارز برتر (بر اساس وزن)
-    sorted_coins = sorted(data, key=lambda x: x["weight"], reverse=True)
-    portfolio = sorted_coins[:10]  # انتخاب ۱۰ ارز برتر
-
-    return portfolio
-
-# به‌روزرسانی فایل README.md با سبد سهام پیشنهادی
+# ایجاد گزارش در README
 def update_readme(portfolio):
-    if not portfolio:
-        return
+    content = f"""## 🚀 سبد پیش‌بینی شده ارزهای دیجیتال
+📅 آخرین بروزرسانی: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC
 
-    readme_content = f"""
-# 🚀 سبد سهام پیشنهادی ارزهای دیجیتال
-این اطلاعات هر ساعت به‌روزرسانی می‌شود.
-
-📅 **آخرین به‌روزرسانی:** {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC
-
-| ارز دیجیتال | قیمت (دلار) | وزن در سبد (%) |
-|------------|------------|----------------|
+| ارز | نماد | قیمت | امتیاز | RSI | MACD |
+|-----|------|-------|--------|-----|------|
 """
-
+    
     for coin in portfolio:
-        readme_content += f"| {coin['symbol'].upper()} | ${coin['current_price']} | {coin['weight']:.2f}% |\n"
-
-    readme_content += """
-💡 **توصیه:** این سبد بر اساس وزن‌دهی ارزش بازار پیشنهاد شده است.
-
-_(اطلاعات از **CoinGecko API** دریافت شده است.)_
-"""
-
-    with open("README.md", "w", encoding="utf-8") as file:
-        file.write(readme_content)
+        content += f"| {coin['name']} | {coin['symbol'].upper()} | ${coin['price']} | {coin['score']} | {coin['rsi']:.1f} | {coin['macd']:.2f} |\n"
+    
+    content += "\n### معیارهای انتخاب:\n"
+    content += "1. **روند قیمت** (SMA20 > SMA50)\n2. **RSI** (30-70 ایده‌آل)\n3. **MACD مثبت**\n4. **حجم معاملات بالا**\n5. **ارزش بازار قابل توجه**"
+    
+    with open("README.md", "w") as f:
+        f.write(content)
 
 if __name__ == "__main__":
-    crypto_data = fetch_top_crypto_prices()
-    portfolio = calculate_portfolio(crypto_data)
-    update_readme(portfolio)
+    top_coins = analyze_top_coins()
+    update_readme(top_coins)
