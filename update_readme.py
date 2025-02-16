@@ -1,6 +1,6 @@
 import requests
 import json
-from datetime import datetime, timedelta
+from datetime import datetime
 import numpy as np
 
 # دریافت داده‌های تاریخی قیمت برای تحلیل
@@ -29,8 +29,8 @@ def calculate_technical_indicators(prices):
     gains = np.where(deltas > 0, deltas, 0)
     losses = np.where(deltas < 0, -deltas, 0)
     
-    avg_gain = np.mean(gains[-14:]) if len(gains) >=14 else 0
-    avg_loss = np.mean(losses[-14:]) if len(losses) >=14 else 0
+    avg_gain = np.mean(gains[-14:]) if len(gains) >= 14 else 0
+    avg_loss = np.mean(losses[-14:]) if len(losses) >= 14 else 0
     
     rs = avg_gain / avg_loss if avg_loss != 0 else 0
     rsi = 100 - (100 / (1 + rs)) if avg_loss != 0 else 50
@@ -110,19 +110,26 @@ def analyze_top_coins():
         except Exception as e:
             print(f"Error analyzing {coin['name']}: {str(e)}")
     
-    return sorted(portfolio, key=lambda x: x['score'], reverse=True)[:10]
+    top_portfolio = sorted(portfolio, key=lambda x: x['score'], reverse=True)[:10]
+    
+    # محاسبه درصد هر ارز در سبد پیشنهادی
+    total_score = sum(coin["score"] for coin in top_portfolio)
+    for coin in top_portfolio:
+        coin["allocation"] = round((coin["score"] / total_score) * 100, 2) if total_score > 0 else 0
+    
+    return top_portfolio
 
 # ایجاد گزارش در README
 def update_readme(portfolio):
-    content = f"""## 🚀 سبد پیش‌بینی شده ارزهای دیجیتال
+    content = f"""## 🚀 سبد پیشنهادی ارزهای دیجیتال
 📅 آخرین بروزرسانی: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC
 
-| ارز | نماد | قیمت | امتیاز | RSI | MACD |
-|-----|------|-------|--------|-----|------|
+| ارز | نماد | قیمت | امتیاز | RSI | MACD | درصد تخصیص |
+|-----|------|-------|--------|-----|------|------------|
 """
     
     for coin in portfolio:
-        content += f"| {coin['name']} | {coin['symbol'].upper()} | ${coin['price']} | {coin['score']} | {coin['rsi']:.1f} | {coin['macd']:.2f} |\n"
+        content += f"| {coin['name']} | {coin['symbol'].upper()} | ${coin['price']} | {coin['score']} | {coin['rsi']:.1f} | {coin['macd']:.2f} | {coin['allocation']}% |\n"
     
     content += "\n### معیارهای انتخاب:\n"
     content += "1. **روند قیمت** (SMA20 > SMA50)\n2. **RSI** (30-70 ایده‌آل)\n3. **MACD مثبت**\n4. **حجم معاملات بالا**\n5. **ارزش بازار قابل توجه**"
