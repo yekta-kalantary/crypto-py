@@ -42,12 +42,16 @@ def calculate_technical_indicators(prices):
     ema26 = np.mean(closing_prices[-26:])
     macd = ema12 - ema26
 
+    # محاسبه تغییرات قیمت هفتگی (برای پیش‌بینی سود)
+    weekly_change = ((closing_prices[-1] - closing_prices[-168]) / closing_prices[-168]) * 100  # 168 ساعت = 7 روز
+
     return {
         'sma20': sma20,
         'sma50': sma50,
         'rsi': rsi,
         'macd': macd,
-        'current_price': closing_prices[-1]
+        'current_price': closing_prices[-1],
+        'weekly_change': weekly_change
     }
 
 # محاسبه امتیاز ترکیبی برای هر ارز
@@ -74,6 +78,10 @@ def calculate_composite_score(coin_data):
     if coin_data['market_cap'] > 5_000_000_000:
         score += 10
     
+    # اضافه کردن سود تخمین‌زده‌شده به امتیاز
+    if coin_data['weekly_change'] > 0:
+        score += int(coin_data['weekly_change'] * 0.5)  # ضریب ۰.۵ برای کاهش تأثیر
+
     return score
 
 # دریافت و تحلیل ۵۰ ارز برتر
@@ -107,7 +115,8 @@ def analyze_top_coins():
                 "score": score,
                 "price": indicators['current_price'],
                 "rsi": indicators['rsi'],
-                "macd": indicators['macd']
+                "macd": indicators['macd'],
+                "weekly_change": indicators['weekly_change']
             })
 
         except Exception as e:
@@ -128,15 +137,15 @@ def update_readme(portfolio):
     content = f"""## 🚀 سبد پیشنهادی ارزهای دیجیتال با کمترین ریسک
 📅 آخرین بروزرسانی: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC
 
-| ارز | نماد | قیمت | امتیاز | RSI | MACD | درصد تخصیص |
-|-----|------|-------|--------|-----|------|------------|
+| ارز | نماد | قیمت | امتیاز | RSI | MACD | تغییرات هفتگی (%) | درصد تخصیص |
+|-----|------|-------|--------|-----|------|-------------------|------------|
 """
     
     for coin in portfolio:
-        content += f"| {coin['name']} | {coin['symbol'].upper()} | ${coin['price']} | {coin['score']} | {coin['rsi']:.1f} | {coin['macd']:.2f} | {coin['allocation']}% |\n"
+        content += f"| {coin['name']} | {coin['symbol'].upper()} | ${coin['price']} | {coin['score']} | {coin['rsi']:.1f} | {coin['macd']:.2f} | {coin['weekly_change']:.2f}% | {coin['allocation']}% |\n"
     
     content += "\n### معیارهای انتخاب:\n"
-    content += "1. **روند قیمت صعودی** (SMA20 > SMA50)\n2. **RSI متعادل (40-60)**\n3. **MACD مثبت**\n4. **حجم معاملات بالا**\n5. **ارزش بازار قوی (کمتر از ۵ میلیارد دلار انتخاب نمی‌شود)**"
+    content += "1. **روند قیمت صعودی** (SMA20 > SMA50)\n2. **RSI متعادل (40-60)**\n3. **MACD مثبت**\n4. **حجم معاملات بالا**\n5. **ارزش بازار قوی (کمتر از ۵ میلیارد دلار انتخاب نمی‌شود)**\n6. **پیش‌بینی سود هفتگی**"
 
     with open("README.md", "w") as f:
         f.write(content)
