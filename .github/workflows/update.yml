@@ -3,7 +3,7 @@ name: Update Crypto Report
 on:
   schedule:
     - cron: "0 * * * *"  # اجرا هر ساعت
-  workflow_dispatch:
+  workflow_dispatch:  # اجرای دستی در صورت نیاز
 
 jobs:
   update-readme:
@@ -11,7 +11,9 @@ jobs:
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
-      
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
@@ -25,10 +27,10 @@ jobs:
 
       - name: Commit and Push Changes
         env:
-          GITHUB_TOKEN: ${{ secrets.GH_PAT }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           git config --global user.name "GitHub Actions"
           git config --global user.email "actions@github.com"
           git add README.md
           git commit -m "📊 آپدیت قیمت‌های کریپتو $(date)" || exit 0
-          git push https://${{ secrets.GH_PAT }}@github.com/${{ github.repository }}.git main
+          git push origin main
