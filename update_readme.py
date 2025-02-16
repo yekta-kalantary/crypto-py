@@ -1,15 +1,14 @@
 import requests
-import json
-from datetime import datetime
 import numpy as np
+from datetime import datetime
 
-# دریافت داده‌های تاریخی قیمت برای تحلیل
-def fetch_historical_data(coin_id, days=30):
+# دریافت داده‌های تاریخی قیمت برای تحلیل (داده‌های ساعتی در ۷ روز گذشته)
+def fetch_historical_data(coin_id, days=7):
     url = f"https://api.coingecko.com/api/v3/coins/{coin_id}/market_chart"
     params = {
         "vs_currency": "usd",
         "days": days,
-        "interval": "daily"
+        "interval": "hourly"
     }
     response = requests.get(url, params=params)
     if response.status_code == 200:
@@ -20,9 +19,9 @@ def fetch_historical_data(coin_id, days=30):
 def calculate_technical_indicators(prices):
     closing_prices = [price[1] for price in prices]
     
-    # محاسبه SMA 20 و SMA 50
-    sma20 = np.mean(closing_prices[-20:]) if len(closing_prices) >= 20 else 0
-    sma50 = np.mean(closing_prices[-50:]) if len(closing_prices) >= 50 else 0
+    # محاسبه EMA 20 و EMA 50
+    ema20 = np.mean(closing_prices[-20:]) if len(closing_prices) >= 20 else 0
+    ema50 = np.mean(closing_prices[-50:]) if len(closing_prices) >= 50 else 0
     
     # محاسبه RSI
     deltas = np.diff(closing_prices)
@@ -39,12 +38,16 @@ def calculate_technical_indicators(prices):
     ema12 = np.mean(closing_prices[-12:])
     ema26 = np.mean(closing_prices[-26:])
     macd = ema12 - ema26
+
+    # روند یک هفته‌ای
+    weekly_trend = (closing_prices[-1] - closing_prices[0]) / closing_prices[0] * 100
     
     return {
-        'sma20': sma20,
-        'sma50': sma50,
+        'ema20': ema20,
+        'ema50': ema50,
         'rsi': rsi,
         'macd': macd,
+        'weekly_trend': weekly_trend,
         'current_price': closing_prices[-1]
     }
 
@@ -52,31 +55,27 @@ def calculate_technical_indicators(prices):
 def calculate_composite_score(coin_data):
     score = 0
     
-    # 1. روند کوتاه‌مدت (SMA)
-    if coin_data['sma20'] > coin_data['sma50']:
+    # 1. روند صعودی بر اساس EMA
+    if coin_data['ema20'] > coin_data['ema50']:
         score += 25
     
-    # 2. شرایط RSI
+    # 2. وضعیت RSI (۳۰ تا ۷۰ مناسب)
     if 30 < coin_data['rsi'] < 70:
         score += 20
     elif coin_data['rsi'] < 30:
-        score += 30  # شرایط اشباع فروش
-    
+        score += 30  # اشباع فروش
+
     # 3. قدرت MACD
     if coin_data['macd'] > 0:
         score += 15
     
-    # 4. حجم معاملات
-    if coin_data['total_volume'] > 100000000:
-        score += 20
-    
-    # 5. قدرت بازار
-    if coin_data['market_cap'] > 1000000000:
-        score += 10
-    
+    # 4. روند هفتگی
+    if coin_data['weekly_trend'] > 5:  # افزایش بیش از ۵٪ در یک هفته
+        score += 25
+
     return score
 
-# دریافت و تحلیل 50 ارز برتر
+# تحلیل ۵۰ رمزارز برتر
 def analyze_top_coins():
     base_data = requests.get(
         "https://api.coingecko.com/api/v3/coins/markets",
@@ -92,11 +91,7 @@ def analyze_top_coins():
                 continue
                 
             indicators = calculate_technical_indicators(historical_data)
-            score = calculate_composite_score({
-                **indicators,
-                "total_volume": coin['total_volume'],
-                "market_cap": coin['market_cap']
-            })
+            score = calculate_composite_score(indicators)
             
             portfolio.append({
                 "name": coin['name'],
@@ -104,7 +99,8 @@ def analyze_top_coins():
                 "score": score,
                 "price": indicators['current_price'],
                 "rsi": indicators['rsi'],
-                "macd": indicators['macd']
+                "macd": indicators['macd'],
+                "weekly_trend": indicators['weekly_trend']
             })
             
         except Exception as e:
@@ -112,28 +108,28 @@ def analyze_top_coins():
     
     top_portfolio = sorted(portfolio, key=lambda x: x['score'], reverse=True)[:10]
     
-    # محاسبه درصد هر ارز در سبد پیشنهادی
+    # تخصیص درصد هر ارز در سبد
     total_score = sum(coin["score"] for coin in top_portfolio)
     for coin in top_portfolio:
         coin["allocation"] = round((coin["score"] / total_score) * 100, 2) if total_score > 0 else 0
     
     return top_portfolio
 
-# ایجاد گزارش در README
+# ایجاد گزارش سبد پیشنهادی
 def update_readme(portfolio):
     content = f"""## 🚀 سبد پیشنهادی ارزهای دیجیتال
 📅 آخرین بروزرسانی: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC
 
-| ارز | نماد | قیمت | امتیاز | RSI | MACD | درصد تخصیص |
-|-----|------|-------|--------|-----|------|------------|
+| ارز | نماد | قیمت | امتیاز | RSI | MACD | روند هفتگی | درصد تخصیص |
+|-----|------|-------|--------|-----|------|-----------|------------|
 """
     
     for coin in portfolio:
-        content += f"| {coin['name']} | {coin['symbol'].upper()} | ${coin['price']} | {coin['score']} | {coin['rsi']:.1f} | {coin['macd']:.2f} | {coin['allocation']}% |\n"
+        content += f"| {coin['name']} | {coin['symbol'].upper()} | ${coin['price']} | {coin['score']} | {coin['rsi']:.1f} | {coin['macd']:.2f} | {coin['weekly_trend']:.2f}% | {coin['allocation']}% |\n"
     
     content += "\n### معیارهای انتخاب:\n"
-    content += "1. **روند قیمت** (SMA20 > SMA50)\n2. **RSI** (30-70 ایده‌آل)\n3. **MACD مثبت**\n4. **حجم معاملات بالا**\n5. **ارزش بازار قابل توجه**"
-    
+    content += "1. **روند صعودی بر اساس EMA**\n2. **RSI متعادل (۳۰ تا ۷۰)**\n3. **MACD مثبت**\n4. **روند هفتگی مثبت بالای ۵٪**"
+
     with open("README.md", "w") as f:
         f.write(content)
 
