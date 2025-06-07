@@ -29,8 +29,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          git config --global user.name "GitHub Actions"
-          git config --global user.email "actions@github.com"
+          git config --global user.name "Ali (Yekta) Rezaei Kalantary"
+          git config --global user.email "26902978+yekta-kalantary@users.noreply.github.com"
           git add README.md
           git commit -m "📊 آپدیت قیمت‌های کریپتو $(date)" || exit 0
           git push origin main
