@@ -2,7 +2,7 @@ name: Update Crypto Report
 
 on:
   schedule:
-    - cron: "0 * * * *"  # اجرا هر ساعت
+  #  - cron: "0 * * * *"  # اجرا هر ساعت
   workflow_dispatch:  # اجرای دستی در صورت نیاز
 
 jobs:
